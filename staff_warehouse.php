@@ -9,6 +9,43 @@ if (!isset($_SESSION['staff_id'])) {
 
 $conn = db();
 
+function notifyPreorderCustomersWhenRestocked($conn, int $carId, string $carName): int
+{
+    $preorderResult = pg_query_params(
+        $conn,
+        "SELECT ma_khachhang FROM dat_truoc_xe WHERE ma_xe = $1 AND trang_thai = 'cho_hang'",
+        [$carId]
+    );
+
+    if (!$preorderResult || pg_num_rows($preorderResult) === 0) {
+        return 0;
+    }
+
+    $notified = 0;
+    while ($row = pg_fetch_assoc($preorderResult)) {
+        pg_query_params(
+            $conn,
+            'INSERT INTO thong_bao (tieu_de, noi_dung, loai_thongbao, ma_khachhang) VALUES ($1, $2, $3, $4)',
+            [
+                'Xe đã về hàng',
+                'Xe ' . $carName . ' bạn đặt trước đã có hàng. Hãy đặt ngay để giữ chỗ.',
+                'dat_truoc',
+                $row['ma_khachhang']
+            ]
+        );
+        $notified++;
+    }
+
+    pg_query_params(
+        $conn,
+        "UPDATE dat_truoc_xe SET trang_thai = 'da_thong_bao', da_thong_bao = TRUE, ngay_thong_bao = NOW()
+         WHERE ma_xe = $1 AND trang_thai = 'cho_hang'",
+        [$carId]
+    );
+
+    return $notified;
+}
+
 // Thêm cột mo_ta vào bảng xe nếu chưa có
 pg_query($conn, "ALTER TABLE xe ADD COLUMN IF NOT EXISTS mo_ta TEXT");
 
@@ -164,16 +201,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 [$carId]
             );
             
+            $previousStock = 0;
+            $newQuantity = $quantity;
+            $result = false;
+
             if ($inventoryCheck && pg_num_rows($inventoryCheck) > 0) {
                 $inv = pg_fetch_assoc($inventoryCheck);
-                $newQuantity = ($inv['so_luong_ton'] ?? 0) + $quantity;
-                $result = pg_query_params($conn,
+                $previousStock = (int)($inv['so_luong_ton'] ?? 0);
+                $newQuantity = $previousStock + $quantity;
+                $result = pg_query_params(
+                    $conn,
                     'UPDATE ton_kho SET so_luong_nhap = COALESCE(so_luong_nhap, 0) + $1, so_luong_ton = $2, ngay_cap_nhat = CURRENT_DATE WHERE ma_baotri = $3',
                     [$quantity, $newQuantity, $inv['ma_baotri']]
                 );
             } else {
+                $previousStock = 0;
+                $newQuantity = $quantity;
                 // Tạo mới tồn kho
-                $result = pg_query_params($conn,
+                $result = pg_query_params(
+                    $conn,
                     'INSERT INTO ton_kho (so_luong_nhap, so_luong_ton, ngay_cap_nhat, ma_nhanvien) VALUES ($1, $1, CURRENT_DATE, $2) RETURNING ma_baotri',
                     [$quantity, $_SESSION['staff_id']]
                 );
@@ -184,6 +230,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if ($result) {
                 $message = 'Đã nhập hàng thành công.';
+                $shouldNotifyPreorder = ($previousStock <= 0 && $newQuantity > 0);
+                if ($shouldNotifyPreorder) {
+                    $carInfoResult = pg_query_params(
+                        $conn,
+                        'SELECT hang_xe, loai_xe FROM xe WHERE ma_xe = $1 LIMIT 1',
+                        [$carId]
+                    );
+                    $carInfo = $carInfoResult ? pg_fetch_assoc($carInfoResult) : null;
+                    $carName = trim(($carInfo['hang_xe'] ?? 'Xe') . ' ' . ($carInfo['loai_xe'] ?? '#' . $carId));
+                    $notified = notifyPreorderCustomersWhenRestocked($conn, $carId, $carName);
+                    if ($notified > 0) {
+                        $message .= ' Đã gửi thông báo cho ' . $notified . ' khách hàng đặt trước.';
+                    }
+                }
             } else {
                 $errors[] = 'Không thể nhập hàng: ' . pg_last_error($conn);
             }

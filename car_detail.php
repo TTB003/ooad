@@ -42,6 +42,7 @@ if ($imagesResult) {
 
 // Lấy thông tin người dùng
 $loggedInUser = null;
+$customerPreorder = null;
 if (!empty($_SESSION['customer_id'])) {
     $result = pg_query_params(
         $conn,
@@ -50,6 +51,17 @@ if (!empty($_SESSION['customer_id'])) {
     );
     if ($result) {
         $loggedInUser = pg_fetch_assoc($result);
+    }
+
+    if ($loggedInUser) {
+        $preorderResult = pg_query_params(
+            $conn,
+            'SELECT trang_thai, da_thong_bao FROM dat_truoc_xe WHERE ma_xe = $1 AND ma_khachhang = $2 LIMIT 1',
+            [$carId, $loggedInUser['ma_khachhang']]
+        );
+        if ($preorderResult) {
+            $customerPreorder = pg_fetch_assoc($preorderResult) ?: null;
+        }
     }
 }
 
@@ -60,6 +72,24 @@ function formatCurrency($value) {
 $soLuongTon = (int)($car['so_luong_ton'] ?? 0);
 $status = $soLuongTon > 0 ? 'Có sẵn' : 'Đang hết hàng';
 $buttonText = $soLuongTon > 0 ? 'Đặt ngay' : 'Đặt hàng trước';
+$hasPendingPreorder = $customerPreorder && ($customerPreorder['trang_thai'] ?? '') === 'cho_hang';
+$preorderNoticeText = '';
+$preorderNoticeClass = 'warning';
+
+if ($soLuongTon <= 0) {
+    if ($loggedInUser) {
+        if ($hasPendingPreorder) {
+            $preorderNoticeText = 'Bạn đã gửi yêu cầu đặt trước. Nhân viên sẽ liên hệ ngay khi xe về hàng.';
+        } else {
+            $preorderNoticeText = 'Xe hiện đang hết hàng. Nhấn "Đặt hàng trước" để chúng tôi giữ chỗ và thông báo cho bạn sớm nhất.';
+        }
+    } else {
+        $preorderNoticeText = 'Xe hiện đang hết hàng. Đăng nhập để đặt trước và nhận thông báo khi xe về.';
+    }
+} elseif ($customerPreorder && ($customerPreorder['da_thong_bao'] ?? false)) {
+    $preorderNoticeText = 'Xe bạn đã đặt trước đã có hàng. Hãy đặt ngay để không bỏ lỡ!';
+    $preorderNoticeClass = 'success';
+}
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -214,6 +244,28 @@ $buttonText = $soLuongTon > 0 ? 'Đặt ngay' : 'Đặt hàng trước';
         .btn-primary:hover {
             opacity: 0.9;
         }
+        .preorder-hint {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+        .preorder-hint.warning {
+            background: rgba(251,191,36,0.18);
+            border: 1px solid rgba(217,119,6,0.3);
+            color: #92400e;
+        }
+        .preorder-hint.success {
+            background: rgba(34,197,94,0.18);
+            border: 1px solid rgba(34,197,94,0.3);
+            color: #166534;
+        }
+        .preorder-hint.error {
+            background: rgba(248,113,113,0.18);
+            border: 1px solid rgba(239,68,68,0.3);
+            color: #991b1b;
+        }
         .description {
             margin-top: 32px;
             padding-top: 32px;
@@ -294,11 +346,36 @@ $buttonText = $soLuongTon > 0 ? 'Đặt ngay' : 'Đặt hàng trước';
                     </div>
                     
                     <?php if ($loggedInUser): ?>
-                        <a href="payment.php?car_id=<?= htmlspecialchars($car['ma_xe']) ?>" class="btn btn-primary">
-                            <?= htmlspecialchars($buttonText) ?>
-                        </a>
+                        <?php if ($soLuongTon > 0): ?>
+                            <a href="payment.php?car_id=<?= htmlspecialchars($car['ma_xe']) ?>" class="btn btn-primary">
+                                <?= htmlspecialchars($buttonText) ?>
+                            </a>
+                            <?php if ($preorderNoticeText && $preorderNoticeClass === 'success'): ?>
+                                <div class="preorder-hint success" style="max-width: 420px;">
+                                    <?= htmlspecialchars($preorderNoticeText) ?>
+                                </div>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <button type="button"
+                                    class="btn btn-primary"
+                                    id="preorderButton"
+                                    data-car-id="<?= htmlspecialchars($car['ma_xe']) ?>"
+                                    <?= $hasPendingPreorder ? 'disabled' : '' ?>>
+                                <?= $hasPendingPreorder ? 'Đang chờ liên hệ' : 'Đặt hàng trước' ?>
+                            </button>
+                            <?php if ($preorderNoticeText): ?>
+                                <div id="preorderFeedback" class="preorder-hint <?= $preorderNoticeClass ?>" style="max-width: 420px;">
+                                    <?= htmlspecialchars($preorderNoticeText) ?>
+                                </div>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     <?php else: ?>
                         <a href="login.php" class="btn btn-primary">Đăng nhập để đặt hàng</a>
+                        <?php if ($preorderNoticeText): ?>
+                            <div class="preorder-hint <?= $preorderNoticeClass ?>" style="max-width: 420px;">
+                                <?= htmlspecialchars($preorderNoticeText) ?>
+                            </div>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>
@@ -374,6 +451,55 @@ $buttonText = $soLuongTon > 0 ? 'Đặt ngay' : 'Đặt hàng trước';
             document.getElementById('mainImage').src = url;
             document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
             thumbnail.classList.add('active');
+        }
+
+        const preorderButton = document.getElementById('preorderButton');
+        const preorderFeedback = document.getElementById('preorderFeedback');
+
+        function setPreorderFeedback(message, variant) {
+            if (!preorderFeedback) return;
+            preorderFeedback.style.display = 'block';
+            preorderFeedback.textContent = message;
+            preorderFeedback.classList.remove('warning', 'success', 'error');
+            preorderFeedback.classList.add(variant || 'warning');
+        }
+
+        if (preorderButton) {
+            preorderButton.addEventListener('click', function () {
+                if (preorderButton.disabled) {
+                    return;
+                }
+
+                const originalText = preorderButton.textContent;
+                preorderButton.disabled = true;
+                preorderButton.textContent = 'Đang gửi...';
+
+                fetch('preorder_car.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        car_id: preorderButton.dataset.carId
+                    })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            preorderButton.textContent = 'Đang chờ liên hệ';
+                            setPreorderFeedback(data.message, 'success');
+                        } else {
+                            preorderButton.disabled = false;
+                            preorderButton.textContent = originalText;
+                            setPreorderFeedback(data.message || 'Không thể gửi yêu cầu đặt trước.', 'error');
+                        }
+                    })
+                    .catch(() => {
+                        preorderButton.disabled = false;
+                        preorderButton.textContent = originalText;
+                        setPreorderFeedback('Không thể kết nối tới máy chủ. Vui lòng thử lại.', 'error');
+                    });
+            });
         }
     </script>
 </body>

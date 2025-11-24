@@ -39,3 +39,7 @@ function db()
 
     return $conn;
 }
+
+/**
+ * Đảm bảo bảng dat_truoc_xe tồn tại để xử lý đặt trước.
+ */

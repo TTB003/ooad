@@ -107,6 +107,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $car && $customer) {
                         'UPDATE ton_kho SET so_luong_ban = COALESCE(so_luong_ban, 0) + $1, so_luong_ton = $2, ngay_cap_nhat = CURRENT_DATE WHERE ma_baotri = (SELECT ma_baotri FROM xe WHERE ma_xe = $3)',
                         [$soLuong, $newQuantity, $carId]
                     );
+                        
+                        pg_query_params(
+                            $conn,
+                            "UPDATE dat_truoc_xe 
+                             SET trang_thai = 'da_mua', da_thong_bao = TRUE, ngay_thong_bao = NOW()
+                             WHERE ma_xe = $1 AND ma_khachhang = $2",
+                            [$carId, $_SESSION['customer_id']]
+                        );
                     
                     // Tạo thông báo cho khách hàng
                     pg_query_params($conn,
