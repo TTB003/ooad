@@ -108,6 +108,7 @@ CREATE TABLE ton_kho (
 -- 8 xe ---------------------------------------------------------------------
 CREATE TABLE xe (
     ma_xe SERIAL PRIMARY KEY,
+    ma_hangxe INT NOT NULL,
     gia_ban NUMERIC(15,2) NOT NULL,
     hang_xe VARCHAR(100) NOT NULL,
     tinh_trang tinh_trang_xe_enum,
@@ -116,7 +117,8 @@ CREATE TABLE xe (
     nam_san_xuat INT,
     mo_ta TEXT,
     ma_baotri INT,
-    CONSTRAINT fk_xe_baotri FOREIGN KEY (ma_baotri) REFERENCES ton_kho(ma_baotri)
+    CONSTRAINT fk_xe_baotri FOREIGN KEY (ma_baotri) REFERENCES ton_kho(ma_baotri),
+    CONSTRAINT fk_xe_hangxe FOREIGN KEY (ma_hangxe) REFERENCES hang_xe(ma_hangxe)
 );
 
 -- 8b hinh_anh_xe -----------------------------------------------------------
@@ -299,3 +301,25 @@ ON CONFLICT (username) DO UPDATE
         ma_nhanvien = EXCLUDED.ma_nhanvien,
         ma_loaitk = EXCLUDED.ma_loaitk,
         trang_thai = 'active';
+
+-- Bổ sung cột ma_hangxe cho bảng xe nếu hệ thống đã tạo trước đó -------
+DO $$
+BEGIN
+    ALTER TABLE xe ADD COLUMN IF NOT EXISTS ma_hangxe INT;
+EXCEPTION
+    WHEN duplicate_column THEN NULL;
+END $$;
+
+UPDATE xe x
+SET ma_hangxe = hx.ma_hangxe
+FROM hang_xe hx
+WHERE x.ma_hangxe IS NULL
+  AND hx.ten_hangxe = x.hang_xe;
+
+DO $$
+BEGIN
+    ALTER TABLE xe
+        ADD CONSTRAINT fk_xe_hangxe FOREIGN KEY (ma_hangxe) REFERENCES hang_xe(ma_hangxe);
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;

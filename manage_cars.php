@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Lấy tên hãng xe từ ID
         $hang_xe = '';
-        if ($hangXeId) {
+        if ($hangXeId > 0) {
             $brandResult = pg_query_params($conn, 'SELECT ten_hangxe FROM hang_xe WHERE ma_hangxe = $1', [$hangXeId]);
             if ($brandResult && $brandRow = pg_fetch_assoc($brandResult)) {
                 $hang_xe = $brandRow['ten_hangxe'];
@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        if ($hang_xe === '' || $loai_xe === '') {
+        if ($hangXeId <= 0 || $hang_xe === '' || $loai_xe === '') {
             $flash = "❌ Vui lòng chọn hãng xe và nhập loại xe.";
         } elseif ($gia_ban <= 0) {
             $flash = "❌ Giá bán phải lớn hơn 0.";
@@ -110,9 +110,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // Tạo xe mới
-                $result = pg_query_params($conn,
-                    'INSERT INTO xe (hang_xe, loai_xe, mau_xe, nam_san_xuat, gia_ban, tinh_trang, mo_ta) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ma_xe',
-                    [$hang_xe, $loai_xe, $mau_xe ?: null, $nam_san_xuat ?: null, $gia_ban, $tinh_trang, $mo_ta ?: null]
+                $result = pg_query_params(
+                    $conn,
+                    'INSERT INTO xe (ma_hangxe, hang_xe, loai_xe, mau_xe, nam_san_xuat, gia_ban, tinh_trang, mo_ta) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ma_xe',
+                    [
+                        $hangXeId,
+                        $hang_xe,
+                        $loai_xe,
+                        $mau_xe ?: null,
+                        $nam_san_xuat ?: null,
+                        $gia_ban,
+                        $tinh_trang,
+                        $mo_ta ?: null
+                    ]
                 );
                 
                 if ($result && $row = pg_fetch_assoc($result)) {
@@ -154,17 +164,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Sửa xe
     if (isset($_POST['edit_car'])) {
-        $ma_xe = $_POST['ma_xe'];
-        $hang_xe = $_POST['hang_xe'];
-        $loai_xe = $_POST['loai_xe'];
-        $gia_ban = $_POST['gia_ban'];
-        $tinh_trang = $_POST['tinh_trang'];
-        $mau_xe = $_POST['mau_xe'];
-        $nam_san_xuat = $_POST['nam_san_xuat'];
-        $mo_ta = $_POST['mo_ta'] ?? '';
-        $res = pg_query_params($conn, "UPDATE xe SET hang_xe=$1, loai_xe=$2, gia_ban=$3, tinh_trang=$4, mau_xe=$5, nam_san_xuat=$6, mo_ta=$7 WHERE ma_xe=$8",
-            [$hang_xe,$loai_xe,$gia_ban,$tinh_trang,$mau_xe,$nam_san_xuat,$mo_ta,$ma_xe]);
-        $flash = $res ? "✅ Cập nhật xe thành công" : "❌ Lỗi cập nhật xe";
+        $ma_xe = (int)($_POST['ma_xe'] ?? 0);
+        $hangXeId = (int)($_POST['hang_xe_id'] ?? 0);
+        $loai_xe = trim($_POST['loai_xe'] ?? '');
+        $gia_ban = (float)($_POST['gia_ban'] ?? 0);
+        $tinh_trang = $_POST['tinh_trang'] ?? 'Moi';
+        $mau_xe = trim($_POST['mau_xe'] ?? '');
+        $nam_san_xuat = (int)($_POST['nam_san_xuat'] ?? date('Y'));
+        $mo_ta = trim($_POST['mo_ta'] ?? '');
+
+        $hang_xe = '';
+        if ($hangXeId > 0) {
+            $brandResult = pg_query_params($conn, 'SELECT ten_hangxe FROM hang_xe WHERE ma_hangxe = $1', [$hangXeId]);
+            if ($brandResult && $brandRow = pg_fetch_assoc($brandResult)) {
+                $hang_xe = $brandRow['ten_hangxe'];
+            }
+        }
+
+        $res = false;
+        if ($ma_xe <= 0 || $hangXeId <= 0 || $hang_xe === '' || $loai_xe === '' || $gia_ban <= 0) {
+            $flash = "❌ Thiếu thông tin cần thiết để cập nhật xe.";
+        } else {
+            $res = pg_query_params(
+                $conn,
+                "UPDATE xe SET ma_hangxe=$1, hang_xe=$2, loai_xe=$3, gia_ban=$4, tinh_trang=$5, mau_xe=$6, nam_san_xuat=$7, mo_ta=$8 WHERE ma_xe=$9",
+                [$hangXeId, $hang_xe, $loai_xe, $gia_ban, $tinh_trang, $mau_xe, $nam_san_xuat, $mo_ta ?: null, $ma_xe]
+            );
+            $flash = $res ? "✅ Cập nhật xe thành công" : "❌ Lỗi cập nhật xe";
+        }
     }
 
     // Xóa xe
@@ -185,7 +212,7 @@ if ($res_brands) {
 
 // Danh sách xe
 $cars = [];
-$res_cars = pg_query($conn, "SELECT * FROM xe ORDER BY ma_xe DESC");
+$res_cars = pg_query($conn, "SELECT x.*, COALESCE(hx.ten_hangxe, x.hang_xe) AS brand_name FROM xe x LEFT JOIN hang_xe hx ON x.ma_hangxe = hx.ma_hangxe ORDER BY x.ma_xe DESC");
 if ($res_cars) {
     while ($row = pg_fetch_assoc($res_cars)) $cars[] = $row;
 }
@@ -606,7 +633,7 @@ $tinh_trang_options = ['Moi'=>'Mới','Da_qua_su_dung'=>'Đã qua sử dụng','
                                 <?php foreach($cars as $car): ?>
                                     <tr>
                                         <td><strong>#<?= $car['ma_xe'] ?></strong></td>
-                                        <td><strong><?= htmlspecialchars($car['hang_xe']) ?></strong></td>
+                                        <td><strong><?= htmlspecialchars($car['brand_name']) ?></strong></td>
                                         <td><?= htmlspecialchars($car['loai_xe']) ?></td>
                                         <td><strong style="color: #22c55e;"><?= number_format($car['gia_ban'],0,',','.') ?> ₫</strong></td>
                                         <td>
@@ -668,7 +695,7 @@ $tinh_trang_options = ['Moi'=>'Mới','Da_qua_su_dung'=>'Đã qua sử dụng','
                                 <?php foreach($cars as $car): ?>
                                     <tr>
                                         <td><strong>#<?= $car['ma_xe'] ?></strong></td>
-                                        <td><strong><?= htmlspecialchars($car['hang_xe']) ?></strong></td>
+                                        <td><strong><?= htmlspecialchars($car['brand_name']) ?></strong></td>
                                         <td><?= htmlspecialchars($car['loai_xe']) ?></td>
                                         <td><strong style="color: #22c55e;"><?= number_format($car['gia_ban'],0,',','.') ?> ₫</strong></td>
                                         <td>
@@ -760,10 +787,10 @@ $tinh_trang_options = ['Moi'=>'Mới','Da_qua_su_dung'=>'Đã qua sử dụng','
                 <div class="form-grid">
                     <div class="form-group">
                         <label>Hãng xe *</label>
-                        <select name="hang_xe" id="edit_hang_xe" required>
+                        <select name="hang_xe_id" id="edit_hang_xe" required>
                             <option value="">-- Chọn hãng --</option>
                             <?php foreach($brands as $b): ?>
-                                <option value="<?= htmlspecialchars($b['ten_hangxe']) ?>"><?= htmlspecialchars($b['ten_hangxe']) ?></option>
+                                <option value="<?= htmlspecialchars($b['ma_hangxe']) ?>"><?= htmlspecialchars($b['ten_hangxe']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -848,7 +875,7 @@ $tinh_trang_options = ['Moi'=>'Mới','Da_qua_su_dung'=>'Đã qua sử dụng','
         // Mở modal sửa xe
         function openEditModal(car) {
             document.getElementById('edit_ma_xe').value = car.ma_xe;
-            document.getElementById('edit_hang_xe').value = car.hang_xe;
+            document.getElementById('edit_hang_xe').value = car.ma_hangxe || '';
             document.getElementById('edit_loai_xe').value = car.loai_xe;
             document.getElementById('edit_gia_ban').value = car.gia_ban;
             document.getElementById('edit_tinh_trang').value = car.tinh_trang;
