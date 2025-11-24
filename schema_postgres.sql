@@ -105,7 +105,16 @@ CREATE TABLE ton_kho (
     CONSTRAINT fk_tonkho_nv FOREIGN KEY (ma_nhanvien) REFERENCES nhan_vien(ma_nhanvien)
 );
 
--- 8 xe ---------------------------------------------------------------------
+-- 8 hang_xe ---------------------------------------------------------------
+CREATE TABLE hang_xe (
+    ma_hangxe SERIAL PRIMARY KEY,
+    ten_hangxe VARCHAR(100) NOT NULL UNIQUE,
+    logo_url TEXT,
+    ngay_tao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_hang_xe_ten ON hang_xe(ten_hangxe);
+
+-- 9 xe ---------------------------------------------------------------------
 CREATE TABLE xe (
     ma_xe SERIAL PRIMARY KEY,
     ma_hangxe INT NOT NULL,
@@ -121,7 +130,7 @@ CREATE TABLE xe (
     CONSTRAINT fk_xe_hangxe FOREIGN KEY (ma_hangxe) REFERENCES hang_xe(ma_hangxe)
 );
 
--- 8b hinh_anh_xe -----------------------------------------------------------
+-- 9b hinh_anh_xe -----------------------------------------------------------
 CREATE TABLE hinh_anh_xe (
     ma_anh SERIAL PRIMARY KEY,
     ma_xe INT NOT NULL,
@@ -133,17 +142,7 @@ CREATE TABLE hinh_anh_xe (
 );
 CREATE UNIQUE INDEX uq_hinh_anh_xe_chinh ON hinh_anh_xe (ma_xe) WHERE la_chinh = TRUE;
 
--- 8c hang_xe ---------------------------------------------------------------
-CREATE TABLE hang_xe (
-    ma_hangxe SERIAL PRIMARY KEY,
-    ten_hangxe VARCHAR(100) NOT NULL UNIQUE,
-    
-    logo_url TEXT,
-    ngay_tao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX idx_hang_xe_ten ON hang_xe(ten_hangxe);
-
--- 9 bao_hiem_xe ------------------------------------------------------------
+-- 10 bao_hiem_xe -----------------------------------------------------------
 CREATE TABLE bao_hiem_xe (
     ma_baohiem SERIAL PRIMARY KEY,
     ngay_bat_dau DATE,
