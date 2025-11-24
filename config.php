@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 const DB_HOST = 'localhost';
 const DB_PORT = '5432';
-const DB_NAME = 'qlxe';
+const DB_NAME = 'xe';
 const DB_USER = 'postgres';
 const DB_PASS = '123456';
 
@@ -39,7 +39,3 @@ function db()
 
     return $conn;
 }
-
-/**
- * Đảm bảo bảng dat_truoc_xe tồn tại để xử lý đặt trước.
- */

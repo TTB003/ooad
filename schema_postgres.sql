@@ -141,20 +141,6 @@ CREATE TABLE hang_xe (
 );
 CREATE INDEX idx_hang_xe_ten ON hang_xe(ten_hangxe);
 
--- 8d dat_truoc_xe -----------------------------------------------------------
-CREATE TABLE dat_truoc_xe (
-    ma_dattruoc SERIAL PRIMARY KEY,
-    ma_xe INT NOT NULL REFERENCES xe(ma_xe) ON DELETE CASCADE,
-    ma_khachhang INT NOT NULL REFERENCES khach_hang(ma_khachhang) ON DELETE CASCADE,
-    ghi_chu TEXT,
-    trang_thai VARCHAR(50) DEFAULT 'cho_hang',
-    da_thong_bao BOOLEAN DEFAULT FALSE,
-    ngay_dat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    ngay_thong_bao TIMESTAMP
-);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_dat_truoc_xe_unique ON dat_truoc_xe (ma_xe, ma_khachhang);
-CREATE INDEX IF NOT EXISTS idx_dat_truoc_xe_trang_thai ON dat_truoc_xe (ma_xe, trang_thai, da_thong_bao);
-
 -- 9 bao_hiem_xe ------------------------------------------------------------
 CREATE TABLE bao_hiem_xe (
     ma_baohiem SERIAL PRIMARY KEY,
@@ -313,4 +299,3 @@ ON CONFLICT (username) DO UPDATE
         ma_nhanvien = EXCLUDED.ma_nhanvien,
         ma_loaitk = EXCLUDED.ma_loaitk,
         trang_thai = 'active';
-
